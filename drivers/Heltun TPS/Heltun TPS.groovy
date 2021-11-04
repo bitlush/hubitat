@@ -7,12 +7,12 @@ import groovy.transform.Field
 @Field String DEFAULT_LOG_LEVEL = LOG_LEVELS[1]
 
 @Field List<Integer> PARAMETER_ENUMS = [
-    61, 62, 63, 64, 65, // reporting
-    141, 142, 143, 144, 146, // relay control source
     7, 8, 9, 10, 11, // relay mode,
     31, 32, 33, 34, 35, // backlight control source
     41, 42, 43, 44, 45, // button hold mode
-    51, 52, 53, 54, 55 // button click mode
+    51, 52, 53, 54, 55, // button click mode
+    61, 62, 63, 64, 65, // reporting
+    141, 142, 143, 144, 146 // relay control source
 ]
 
 metadata {
@@ -154,8 +154,6 @@ def refreshPreferences() {
 }
 
 def configurePreferences() {
-    def commands = []
-   
     def params = PARAMETER_ENUMS
     
     def configSets = params.collect { p -> zwave.configurationV4.configurationSet(parameterNumber: p, size: 1, scaledConfigurationValue: settings["param${p}"].toInteger()) }
@@ -271,7 +269,7 @@ def zwaveEvent(hubitat.zwave.commands.manufacturerspecificv2.ManufacturerSpecifi
     //state.deviceInfo['productId'] = "${command.productId}"
     //state.deviceInfo['productTypeId'] = "${command.productTypeId}"
 
-    String msr = String.format("%04X-%04X-%04X", command.manufacturerId, command.productTypeId, command.productId)
+    def msr = String.format("%04X-%04X-%04X", command.manufacturerId, command.productTypeId, command.productId)
     
     updateDataValue("MSR", msr)
     
@@ -325,29 +323,28 @@ def zwaveEvent(hubitat.zwave.commands.multichannelv4.MultiChannelEndPointReport 
     
     state.deviceInfo['endPoints'] = command.endPoints
     
-    device.updateSetting("settingButtons", [value: (command.endPoints / 2).toString(), type: "Integer"])
+    def numberOfButtons = command.endPoints / 2
     
-    sendEvent(name: "numberOfButtons", value: command.endPoints / 2, displayed: true)
+    device.updateSetting("settingButtons", [value: numberOfButtons.toString(), type: "Integer"])
+    
+    sendEvent(name: "numberOfButtons", value: numberOfButtons, displayed: true)
 
     if (!childDevices && command.endPoints > 1) {
-        (1..(command.endPoints / 2)).each() {
-            int i = it;
-            
-            def child = addChildDevice("bitlush", "Heltun TPS - Button", "${device.deviceNetworkId}-${it}", [name: "Button ${i} (${device.displayName})", label: "Button ${i} (${device.displayName})", isComponent: true])
-            
-            child.updateDataValue("endPoints", command.endPoints.toString())
-            child.updateDataValue("number", i.toString())
+        (1..numberOfButtons).each() {
+            addChildEndPoint("Button", it as Integer, command.endPoints)
         }
         
-        (1 + command.endPoints / 2..(command.endPoints)).each() {
-            int i = it - command.endPoints / 2;
-            
-            def child = addChildDevice("bitlush", "Heltun TPS - Relay", "${device.deviceNetworkId}-${it}", [name: "Relay ${i} (${device.displayName})", label: "Relay ${i} (${device.displayName})", isComponent: true])
-            
-            child.updateDataValue("endPoints", command.endPoints.toString())
-            child.updateDataValue("number", i.toString())
+        (1 + numberOfButtons..command.endPoints).each() {
+            addChildEndPoint("Relay", (it - numberOfButtons) as Integer, command.endPoints)
         }
     }
+}
+
+void addChildEndPoint(name, number, endPoints) {
+    def child = addChildDevice("bitlush", "Heltun TPS - ${name}", "${device.deviceNetworkId}-${number}", [name: "${name} ${number} (${device.displayName})", label: "${name} ${number} (${device.displayName})", isComponent: true])
+            
+    child.updateDataValue("endPoints", endPoints.toString())
+    child.updateDataValue("number", number.toString())
 }
 
 def getEndPoints() {
