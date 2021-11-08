@@ -19,16 +19,34 @@ metadata {
 }
 
 def parse(value) {
+    logMessage("debug", "Relay parse (${value})")
+    
     if (value) {
-        if (value.name == "switch") {
-            if (value.value != device.currentValue('switch')) {
+        def name = switchEventName(value)
+        
+        if (name == "switch") {
+            def v = switchEventValue(value)
+            
+            if (v != device.currentValue('switch')) {
                 sendEvent(value)
+                
+                logMessage("debug", "Switch turned ${v}")
             }
         }
         else {
+            logMessage("trace", "parse (${value})")
+            
             sendEvent(value)
         }
     }
+}
+
+def switchEventName(value) {
+    return value.name[0]
+}
+
+def switchEventValue(value) {
+    return value.value[0]
 }
 
 def installed() {
