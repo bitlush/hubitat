@@ -112,16 +112,13 @@ def relayControlSourceOptions() {
     if (buttons == 1) {
         options = options + [[1: "Button 1 (Middle)"]]
     }
-    
-    if (buttons == 2) {
+    else if (buttons == 2) {
         options = options + [[1: "Button 1 (Left)"], [2: "Button 2 (Right)"]]
     }
-    
-    if (buttons == 3) {
+    else if (buttons == 3) {
         options = options + [[1: "Button 1 (Top)"], [2: "Button 2 (Middle)"], [3: "Button 3 (Bottom)"]]
     }
-    
-    if (buttons >= 4) {
+    else if (buttons >= 4) {
         options = options + [[1: "Button 1 (Top Left)"], [2: "Button 2 (Top Right)"], [3: "Button 3 (Bottom Left)"], [4: "Button 4 (Bottom Right)"]]
         
         if (buttons == 5) {
@@ -138,7 +135,7 @@ def zwaveEvent(hubitat.zwave.commands.configurationv4.ConfigurationReport comman
     def p = command.parameterNumber
     def v = command.scaledConfigurationValue.toString()
     
-    if (PARAMETER_ENUMS.contains(p)) {
+    if (PARAMETER_ENUMS.contains(p as Integer)) {
         device.updateSetting("param${p}", [value: v, type: "enum"])
     }
     
