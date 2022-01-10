@@ -36,6 +36,8 @@ metadata {
             input name: "logLevel", title: "Log Level", type: "enum", options: LOG_LEVELS, defaultValue: DEFAULT_LOG_LEVEL, required: false
             input name: "logDescText", title: "Log Description Text", type: "bool", defaultValue: false, required: false
             
+            input name: "stateCheckIntervalMinutes", title: "State Check Interval", type: "enum", options:[[0:"Disabled"], [5:"5min"], [10:"10min"], [15:"15min"], [30:"30min"], [60:"1h"], [120:"2h"], [180:"3h"], [240:"4h"], [360:"6h"], [480:"8h"], [720: "12h"]], defaultValue: 120, required: true
+           
             input name: "param141", title: "Report Consumption Interval", type: "enum", options: [[1: "1m"], [2: "2m"], [3: "3m"], [4: "4m"], [5: "5m"],[10: "10m"], [15: "15m"], [30: "30m"], [60: "1h"], [120: "2h"]], defaultValue: 10, required: true
             input name: "param142", title: "Report Consumption on Change", type: "enum", options: [[0: "Disabled"], [1: "Enabled"]], defaultValue: 1, required: true
             input name: "param143", title: "Report Sensors Interval", type: "enum", options: [[1: "1m"], [2: "2m"], [3: "3m"], [4: "4m"], [5:"5m"],[10: "10m"], [15: "15m"], [30: "30m"], [60: "1h"], [120: "2h"]], defaultValue: 10, required: true
@@ -163,6 +165,12 @@ def installed() {
 }
 
 def initialize() {
+    checkState()
+    
+    //scheduleStateCheck()
+}
+
+def checkState() {
     def endpoints = getEndPoints();
     
     if (endpoints) {
@@ -176,8 +184,29 @@ def initialize() {
     }
 }
 
+def scheduleStateCheck() {
+    def intervalMinutes = 120
+    
+    if (stateCheckIntervalMinutes) {
+        intervalMinutes = stateCheckIntervalMinutes.toInteger()
+    }
+    
+    if (intervalMinutes) {
+        if (intervalMinutes < 60) {
+            schedule("0 */${intervalMinutes} * ? * *", checkState)
+        }
+        else {
+            def intervalHours = intervalMinutes / 60
+            
+            schedule("0 0 */${intervalHours} ? * *", checkState)
+        }
+    }
+}
+
 def configure() {
     logMessage("debug", "configure()")
+    
+    scheduleStateCheck()
     
     sequenceCommands([
         zwave.associationV2.associationRemove(groupingIdentifier: 1, nodeId: []),
@@ -219,7 +248,7 @@ def clearState() {
 }
 
 def parse(String description) {
-    //logMessage("debug", "parse() - description: ${description.inspect()}")
+    logMessage("trace", "parse() - description: ${description.inspect()}")
 
     def result = []
 
@@ -290,6 +319,8 @@ def zwaveEvent(hubitat.zwave.commands.associationv2.AssociationGroupingsReport c
 }
 
 void zwaveEvent(hubitat.zwave.commands.basicv1.BasicSet command, Integer endPoint = null) {
+    logMessage("debug", "zwaveEvent(BasicSet) - command: ${command.inspect()}")
+    
     []
 }
 
@@ -328,20 +359,26 @@ def zwaveEvent(hubitat.zwave.commands.multichannelv4.MultiChannelEndPointReport 
 
     if (!childDevices && command.endPoints > 1) {
         (1..numberOfButtons).each() {
-            addChildEndPoint("Button", it as Integer, command.endPoints)
+            def index = it as Integer;
+            
+            addChildEndPoint("Button", index, index, command.endPoints)
         }
         
         (1 + numberOfButtons..command.endPoints).each() {
-            addChildEndPoint("Relay", (it - numberOfButtons) as Integer, command.endPoints)
+            def index = it as Integer;
+            
+            addChildEndPoint("Relay", index, index - numberOfButtons, command.endPoints)
         }
     }
 }
 
-void addChildEndPoint(name, number, endPoints) {
-    def child = addChildDevice("bitlush", "Heltun TPS - ${name}", "${device.deviceNetworkId}-${number}", [name: "${name} ${number} (${device.displayName})", label: "${name} ${number} (${device.displayName})", isComponent: true])
+void addChildEndPoint(name, index, number, endPoints) {
+    logMessage("warn", "add TPS child ${name} / ${number}")
+    
+    def child = addChildDevice("bitlush", "Heltun TPS - ${name}", "${device.deviceNetworkId}-${index}", [name: "${name} ${number} (${device.displayName})", label: "${name} ${number} (${device.displayName})", isComponent: true])
             
-    child.updateDataValue("endPoints", endPoints.toString())
-    child.updateDataValue("number", number.toString())
+    //child.updateDataValue("endPoints", endPoints.toString())
+    //child.updateDataValue("number", number.toString())
 }
 
 def getEndPoints() {
