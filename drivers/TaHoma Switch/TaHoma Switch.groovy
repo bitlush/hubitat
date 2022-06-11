@@ -6,7 +6,7 @@ import groovy.json.JsonBuilder
 
 @Field List<String> LOG_LEVELS = ["error", "warn", "info", "debug", "trace"]
 
-@Field String DEFAULT_LOG_LEVEL = LOG_LEVELS[4]
+@Field String DEFAULT_LOG_LEVEL = LOG_LEVELS[1]
 
 metadata {
     definition (name: "TaHoma Switch", namespace: "bitlush", author: "Keith Wood") {
@@ -234,8 +234,6 @@ private generateToken() {
             logMessage("debug", "generateToken: ${response.data}")
             
             def data = response.data
-        
-            //def data = "[token:62a481c3bd9e068d3cdf]"
         
             (_, tokenId) = (data =~ /\[token:([0-9a-f]*)\]/)[0]
         
