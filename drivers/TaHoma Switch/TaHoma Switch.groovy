@@ -6,7 +6,7 @@ import groovy.json.JsonBuilder
 
 @Field List<String> LOG_LEVELS = ["error", "warn", "info", "debug", "trace"]
 
-@Field String DEFAULT_LOG_LEVEL = LOG_LEVELS[1]
+@Field String DEFAULT_LOG_LEVEL = LOG_LEVELS[4]
 
 metadata {
     definition (name: "TaHoma Switch", namespace: "bitlush", author: "Keith Wood") {
@@ -16,6 +16,7 @@ metadata {
         command "clearDevices"
         command "register"
         command "refreshDevices"
+        //command "testIntegration"
     }
     
     preferences {
@@ -25,7 +26,7 @@ metadata {
             input name: "tahomaPin", type: "password", title: "PIN", required: true
             
             input name: "logLevel", title: "Log Level", type: "enum", options: LOG_LEVELS, defaultValue: DEFAULT_LOG_LEVEL, required: false
-            input name: "stateCheckIntervalMinutes", title: "State Check Interval", type: "enum", options:[[0:"Disabled"], [5:"5min"], [10:"10min"], [15:"15min"], [30:"30min"], [60:"1h"], [120:"2h"], [180:"3h"], [240:"4h"], [360:"6h"], [480:"8h"], [720: "12h"]], defaultValue: 360, required: true
+            input name: "stateCheckIntervalMinutes", title: "State Check Interval", type: "enum", options:[[0:"Disabled"], [30:"30min"], [60:"1h"], [120:"2h"], [180:"3h"], [240:"4h"], [360:"6h"], [480:"8h"], [720: "12h"]], defaultValue: 720, required: true
         }
     }
 }
@@ -123,17 +124,34 @@ def register(force = false) {
     }
 }
 
+/*def testIntegration() {
+    reregister()
+}*/
+
+def getRemainingTokenTime(token) {
+    def created = new Date(token.gatewayCreationTime)
+    def expires = new Date(token.expirationTime)
+    
+    return groovy.time.TimeCategory.minus(expires, new Date())
+}
+
+def durationToDays(duration) {
+    return duration.years * 365 + duration.days
+}
+
+def durationToHours(duration) {
+    return duration.years * 365 * 24 + duration.days * 24 + duration.hours
+}
+
 def reregister() {
     createNewSession()
     
     def token = getExistingToken()
     
-    if (token) {
-        def timeLeft = token.expirationTime - token.gatewayCreationTime
+    if (token) { 
+        def remaining = getRemainingTokenTime(token)
         
-        logMessage("debug", "token time left ${timeLeft}")
-        
-        if (timeLeft < 1000000000) {
+        if (durationToDays(remaining) < 7) {
             token = null
             
             logMessage("info", "TaHoma Switch token will be refreshed")
@@ -198,7 +216,14 @@ private getExistingToken() {
     
     tokens.each() {
         if (it.label == getTokenLabel()) {
-            token = it
+            if (token) {
+                if (getRemainingTokenTime(token) < getRemainingTokenTime(it)) {
+                    token = it
+                }
+            }
+            else {
+                token = it
+            }
         }
     }
     
@@ -234,6 +259,8 @@ private generateToken() {
             logMessage("debug", "generateToken: ${response.data}")
             
             def data = response.data
+        
+            //def data = "[token:62a481c3bd9e068d3cdf]"
         
             (_, tokenId) = (data =~ /\[token:([0-9a-f]*)\]/)[0]
         
