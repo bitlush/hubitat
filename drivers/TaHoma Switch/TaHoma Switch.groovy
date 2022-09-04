@@ -24,6 +24,7 @@ metadata {
             input name: "tahomaUsername", type: "text", title: "Username", required: true
             input name: "tahomaPassword", type: "password", title: "Password", required: true
             input name: "tahomaPin", type: "password", title: "PIN", required: true
+            input name: "tahomaHost", type: "text", title: "Host", required: false
             
             input name: "logLevel", title: "Log Level", type: "enum", options: LOG_LEVELS, defaultValue: DEFAULT_LOG_LEVEL, required: false
             input name: "stateCheckIntervalMinutes", title: "State Check Interval", type: "enum", options:[[0:"Disabled"], [30:"30min"], [60:"1h"], [120:"2h"], [180:"3h"], [240:"4h"], [360:"6h"], [480:"8h"], [720: "12h"]], defaultValue: 720, required: true
@@ -68,7 +69,7 @@ def checkState() {
 
 def apiGet(path) {
     def params = [
-        uri: "https://gateway-${tahomaPin}:8443",
+        uri: tahomaSwitchUri(),
         path: "/enduser-mobile-web/1/enduserAPI" + path,
         ignoreSSLIssues: true,
         headers: ["Authorization": "Bearer ${state.tokenId}"]
@@ -85,8 +86,10 @@ def apiGet(path) {
 }
 
 def apiPost(path, body) {
+    logMessage("trace", "apiPost to " + tahomaSwitchUri())
+    
     def params = [
-        uri: "https://gateway-${tahomaPin}:8443",
+        uri: tahomaSwitchUri(),
         path: "/enduser-mobile-web/1/enduserAPI" + path,
         ignoreSSLIssues: true,
         headers: ["Content-Type": "application/json", "Authorization": "Bearer ${state.tokenId}"],
@@ -100,6 +103,15 @@ def apiPost(path, body) {
     }
     catch (error) {
         logMessage("error", "callApi error: ${error}, r = ${error.getResponse().getData()} token=${state.tokenId}")
+    }
+}
+
+def tahomaSwitchUri() {
+    if (tahomaHost?.length() > 1) {
+        return "https://${tahomaHost}:8443"
+    }
+    else {
+        return "https://gateway-${tahomaPin}:8443"
     }
 }
 
@@ -180,7 +192,7 @@ def refreshDevices() {
         
         orphaned.remove(it.deviceURL)
         
-        if (typeName == "rts:BlindRTSComponent") {
+        if (typeName == "rts:BlindRTSComponent" || typeName == "rts:DualCurtainRTSComponent") {
             logMessage("debug", "rts:BlindRTSComponent ${label}")
             
             try {
@@ -189,6 +201,9 @@ def refreshDevices() {
             catch (error) {
                 logMessage("debug", "error adding device ${label} ${error}")
             }
+        }
+        else {
+            logMessage("debug", "unknown device ${typeName}")
         }
     }
     

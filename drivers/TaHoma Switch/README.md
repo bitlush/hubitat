@@ -14,6 +14,8 @@ This is a Hubitat driver to integrate TaHoma Switch with Hubitat.
 
 - Add your Somfy username, password and TaHoma Switch PIN to the preferences
 
+- THe driver will attempt to guess the IP address of your TaHoma Switch, if the driver isn't working, add the IP address of your TaHoma Switch to the Host setting in the driver's preferences (make sure you assign a static IP to your TaHoma Switch in your home routers settings otherwise it's IP might change)
+
 - Click Register (this will authorise Hubitat to connect to your TaHoma Switch over the internet). All subsequent calls are local.
 
 - Click Refresh Devices
@@ -22,5 +24,5 @@ This is a Hubitat driver to integrate TaHoma Switch with Hubitat.
 
 ## Limitations
 
-This currently only works with RTS blinds as that's all I need. Feel free to contribute if you have other Somfy devices that need supporting, it should be easy to add them.
+This currently only works with RTS blinds and RTS curtains as that's all I need. Feel free to contribute if you have other Somfy devices that need supporting, it should be easy to add them.
 
