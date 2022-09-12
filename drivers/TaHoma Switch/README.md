@@ -14,7 +14,7 @@ This is a Hubitat driver to integrate TaHoma Switch with Hubitat.
 
 - Add your Somfy username, password and TaHoma Switch PIN to the preferences
 
-- THe driver will attempt to guess the IP address of your TaHoma Switch, if the driver isn't working, add the IP address of your TaHoma Switch to the Host setting in the driver's preferences (make sure you assign a static IP to your TaHoma Switch in your home routers settings otherwise it's IP might change)
+- The driver will attempt to guess the IP address of your TaHoma Switch, if the driver isn't working, add the IP address of your TaHoma Switch to the Host setting in the driver's preferences (make sure you assign a static IP to your TaHoma Switch in your home router's settings otherwise its IP might change)
 
 - Click Register (this will authorise Hubitat to connect to your TaHoma Switch over the internet). All subsequent calls are local.
 
