@@ -141,8 +141,12 @@ def register(force = false) {
 }*/
 
 def getRemainingTokenTime(token) {
-    def created = new Date(token.gatewayCreationTime)
-    def expires = new Date(token.expirationTime)
+    def now = new Date()
+    def expires = now
+    
+    if (token.expirationDate) {
+        expires = new Date(token.expirationTime)
+    }
     
     return groovy.time.TimeCategory.minus(expires, new Date())
 }
@@ -274,8 +278,6 @@ private generateToken() {
             logMessage("debug", "generateToken: ${response.data}")
             
             def data = response.data
-        
-            //def data = "[token:62a481c3bd9e068d3cdf]"
         
             (_, tokenId) = (data =~ /\[token:([0-9a-f]*)\]/)[0]
         
