@@ -72,16 +72,33 @@ def apiGet(path) {
         uri: tahomaSwitchUri(),
         path: "/enduser-mobile-web/1/enduserAPI" + path,
         ignoreSSLIssues: true,
+        timeout: 60,
         headers: ["Authorization": "Bearer ${state.tokenId}"]
     ]
-    
-    try {
-        httpGet(params) { response ->
-            return response.data
+
+    for (int i = 0; i < 3; i++) {
+        def retry = false
+        
+        try {
+            httpGet(params) { response ->
+                return response.data
+            }
         }
-    }
-    catch (error) {
-        logMessage("error", "callApi error: ${error} token=${state.tokenId}")
+        catch (org.apache.http.conn.ConnectTimeoutException error) {
+            logHttpException(error)
+            
+            retry = true
+            
+            params.timeout *= 2
+        }
+        catch (Exception error) {
+            logHttpException(error)
+        }
+        finally {
+            if (!retry) {
+                break
+            }
+        }
     }
 }
 
@@ -93,16 +110,45 @@ def apiPost(path, body) {
         path: "/enduser-mobile-web/1/enduserAPI" + path,
         ignoreSSLIssues: true,
         headers: ["Content-Type": "application/json", "Authorization": "Bearer ${state.tokenId}"],
+        timeout: 60,
         body: body
     ]
-    
-    try {
-        httpPost(params) { response ->
-            logMessage("debug", "apiPost: ${response.data}")
+  
+    for (int i = 0; i < 3; i++) {
+        def retry = false
+        
+        try {
+            httpPost(params) { response ->
+                logMessage("debug", "apiPost: ${response.data}")
+            }
+        }
+        catch (org.apache.http.conn.ConnectTimeoutException error) {
+            logHttpException(error)
+            
+            retry = true
+            
+            params.timeout *= 2
+        }
+        catch (Exception error) {
+            logHttpException(error)
+        }
+        finally {
+            if (!retry) {
+                break
+            }
         }
     }
-    catch (error) {
-        logMessage("error", "callApi error: ${error}, r = ${error.getResponse().getData()} token=${state.tokenId}")
+}
+
+def logHttpException(Exception error) {
+    if (error instanceof groovyx.net.http.HttpResponseException) {
+        logMessage("error", "callApi timeout token=${state.tokenId}")
+    }
+    else if (error instanceof groovyx.net.http.HttpResponseException) {
+        logMessage("error", "callApi response error: ${error}, r = ${error.getResponse().getData()} token=${state.tokenId}")
+    }
+    else {
+         logMessage("error", "callApi general error: ${error}, token=${state.tokenId}")
     }
 }
 
