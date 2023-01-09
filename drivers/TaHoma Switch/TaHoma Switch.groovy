@@ -75,13 +75,15 @@ def apiGet(path) {
         timeout: 60,
         headers: ["Authorization": "Bearer ${state.tokenId}"]
     ]
+    
+    def responseData = null
 
     for (int i = 0; i < 3; i++) {
         def retry = false
         
         try {
             httpGet(params) { response ->
-                return response.data
+                responseData = response.data
             }
         }
         catch (org.apache.http.conn.ConnectTimeoutException error) {
@@ -100,6 +102,8 @@ def apiGet(path) {
             }
         }
     }
+    
+    return responseData
 }
 
 def apiPost(path, body) {
@@ -113,13 +117,15 @@ def apiPost(path, body) {
         timeout: 60,
         body: body
     ]
+    
+    def responseData = null
   
     for (int i = 0; i < 3; i++) {
         def retry = false
         
         try {
             httpPost(params) { response ->
-                logMessage("debug", "apiPost: ${response.data}")
+                responseData = response.data
             }
         }
         catch (org.apache.http.conn.ConnectTimeoutException error) {
@@ -138,6 +144,8 @@ def apiPost(path, body) {
             }
         }
     }
+    
+    return responseData
 }
 
 def logHttpException(Exception error) {
@@ -229,6 +237,8 @@ def refreshDevices() {
     register()
     
     def devices = apiGet("/setup/devices")
+    
+    logMessage("trace", "devices ${devices}")
     
     def orphaned = [:]
     
