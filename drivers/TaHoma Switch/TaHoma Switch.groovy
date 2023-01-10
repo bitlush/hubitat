@@ -252,7 +252,7 @@ def refreshDevices() {
         
         orphaned.remove(it.deviceURL)
         
-        if (typeName == "rts:BlindRTSComponent" || typeName == "rts:DualCurtainRTSComponent") {
+        if (typeName.startsWith("rts:") && typeName.endsWith("RTSComponent")) {
             logMessage("debug", "rts:BlindRTSComponent ${label}")
             
             try {
