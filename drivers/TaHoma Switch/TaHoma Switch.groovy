@@ -149,7 +149,7 @@ def apiPost(path, body) {
 }
 
 def logHttpException(Exception error) {
-    if (error instanceof groovyx.net.http.HttpResponseException) {
+    if (error instanceof org.apache.http.conn.ConnectTimeoutException) {
         logMessage("error", "callApi timeout token=${state.tokenId}")
     }
     else if (error instanceof groovyx.net.http.HttpResponseException) {
