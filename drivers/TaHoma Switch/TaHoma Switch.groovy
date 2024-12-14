@@ -8,6 +8,9 @@ import groovy.json.JsonBuilder
 
 @Field String DEFAULT_LOG_LEVEL = LOG_LEVELS[4]
 
+@Field static callLock = new Object()
+@Field static callOccuring = false
+
 metadata {
     definition (name: "TaHoma Switch", namespace: "bitlush", author: "Keith Wood") {
         capability "Configuration"
@@ -25,6 +28,8 @@ metadata {
             input name: "tahomaPassword", type: "password", title: "Password", required: true
             input name: "tahomaPin", type: "password", title: "PIN", required: true
             input name: "tahomaHost", type: "text", title: "Host", required: false
+            
+            input name: "tahomaRegion", title: "Region", type: "enum", options: [[1: "Europe, Middle East and Africa"], [2: "Asia and Pacific"], [4: "North America"]], defaultValue: 1, required: true
             
             input name: "logLevel", title: "Log Level", type: "enum", options: LOG_LEVELS, defaultValue: DEFAULT_LOG_LEVEL, required: false
             input name: "stateCheckIntervalMinutes", title: "State Check Interval", type: "enum", options:[[0:"Disabled"], [30:"30min"], [60:"1h"], [120:"2h"], [180:"3h"], [240:"4h"], [360:"6h"], [480:"8h"], [720: "12h"]], defaultValue: 720, required: true
@@ -67,46 +72,7 @@ def checkState() {
     reregister()
 }
 
-def apiGet(path) {
-    def params = [
-        uri: tahomaSwitchUri(),
-        path: "/enduser-mobile-web/1/enduserAPI" + path,
-        ignoreSSLIssues: true,
-        timeout: 60,
-        headers: ["Authorization": "Bearer ${state.tokenId}"]
-    ]
-    
-    def responseData = null
-
-    for (int i = 0; i < 3; i++) {
-        def retry = false
-        
-        try {
-            httpGet(params) { response ->
-                responseData = response.data
-            }
-        }
-        catch (org.apache.http.conn.ConnectTimeoutException error) {
-            logHttpException(error)
-            
-            retry = true
-            
-            params.timeout *= 2
-        }
-        catch (Exception error) {
-            logHttpException(error)
-        }
-        finally {
-            if (!retry) {
-                break
-            }
-        }
-    }
-    
-    return responseData
-}
-
-def apiPost(path, body) {
+def apiInvoke(path, body) {
     logMessage("trace", "apiPost to " + tahomaSwitchUri())
     
     def params = [
@@ -114,26 +80,34 @@ def apiPost(path, body) {
         path: "/enduser-mobile-web/1/enduserAPI" + path,
         ignoreSSLIssues: true,
         headers: ["Content-Type": "application/json", "Authorization": "Bearer ${state.tokenId}"],
-        timeout: 60,
+        timeout: 30,
         body: body
     ]
     
+    return apiInvokeSynchronized(params, path, body)
+}
+
+@groovy.transform.Synchronized
+def apiInvokeSynchronized(params, path, body) {
     def responseData = null
-  
-    for (int i = 0; i < 3; i++) {
+    
+    for (int i = 0; i < 4; i++) {
         def retry = false
-        
+
         try {
-            httpPost(params) { response ->
-                responseData = response.data
+            if (body == null) {
+                httpGet(params) { response -> responseData = response.data }
+            }
+            else {
+                httpPost(params) { response -> responseData = response.data }
             }
         }
         catch (org.apache.http.conn.ConnectTimeoutException error) {
             logHttpException(error)
-            
+
             retry = true
-            
-            params.timeout *= 2
+
+            params.timeout = min(180, params.timeout * 2)
         }
         catch (Exception error) {
             logHttpException(error)
@@ -145,7 +119,17 @@ def apiPost(path, body) {
         }
     }
     
+    logMessage("trace", "api invoked: ${responseData}");
+    
     return responseData
+}
+
+def apiPost(path, body) {
+    return apiInvoke(path, body)
+}
+
+def apiGet(path) {
+    return apiInvoke(path, null)
 }
 
 def logHttpException(Exception error) {
@@ -307,7 +291,8 @@ private getExistingToken() {
 
 private getAvailableTokens() {
     def params = [
-        uri: "https://ha101-1.overkiz.com/enduser-mobile-web/enduserAPI/config/${tahomaPin}/local/tokens/devmode",
+        uri: getOverkizUrl(),
+        path: "/enduser-mobile-web/enduserAPI/config/${tahomaPin}/local/tokens/devmode",
         headers: ["Content-Type": "application/json", "Cookie": "JSESSIONID=${state.sessionId}"]
     ]
     
@@ -325,7 +310,8 @@ private getAvailableTokens() {
 
 private generateToken() {
     def params = [
-        uri: "https://ha101-1.overkiz.com/enduser-mobile-web/enduserAPI/config/${tahomaPin}/local/tokens/generate",
+        uri: getOverkizUrl(),
+        path: "/enduser-mobile-web/enduserAPI/config/${tahomaPin}/local/tokens/generate",
         headers: ["Content-Type": "application/json", "Cookie": "JSESSIONID=${state.sessionId}"]
     ]
     
@@ -347,9 +333,14 @@ private generateToken() {
     }
 }
 
+private getOverkizUrl() {
+    return "https://ha" + tahomaRegion + "01-1.overkiz.com";
+}
+
 private deleteToken(id) {
     def params = [
-        uri: "https://ha101-1.overkiz.com/enduser-mobile-web/enduserAPI/config/${tahomaPin}/local/tokens/${id}",
+        uri: getOverkizUrl(),
+        path: "/enduser-mobile-web/enduserAPI/config/${tahomaPin}/local/tokens/${id}",
         headers: ["Content-Type": "application/json", "Cookie": "JSESSIONID=${state.sessionId}"]
     ]
     
@@ -369,7 +360,7 @@ def getTokenLabel() {
 
 private activateToken(tokenId) {
     def params = [
-        uri: "https://ha101-1.overkiz.com",
+        uri: getOverkizUrl(),
         path: "/enduser-mobile-web/enduserAPI/config/${tahomaPin}/local/tokens",
         headers: ["Content-Type": "application/json", "Cookie": "JSESSIONID=${state.sessionId}"],
         body: '{ "label": "' + getTokenLabel() + '", "token": "' + tokenId + '", "scope": "devmode" }'
@@ -389,7 +380,7 @@ private activateToken(tokenId) {
 
 private createNewSession() {
     def params = [
-        uri: "https://ha101-1.overkiz.com",
+        uri: getOverkizUrl(),
         path: "/enduser-mobile-web/enduserAPI/login",
         headers: ["Content-Type": "application/x-www-form-urlencoded"],
         body: "userId=" + URLEncoder.encode(tahomaUsername, "UTF-8") + "&" + "userPassword=" + URLEncoder.encode(tahomaPassword, "UTF-8")
