@@ -237,13 +237,23 @@ def refreshDevices() {
         orphaned.remove(it.deviceURL)
         
         if (typeName.startsWith("rts:") && typeName.endsWith("RTSComponent")) {
-            logMessage("debug", "rts:BlindRTSComponent ${label}")
+            logMessage("debug", "RTS Component ${label}")
             
             try {
-                addTaHomaRtsBlind(it)
+                addTaHomaComponent(it)
             }
             catch (error) {
-                logMessage("debug", "error adding device ${label} ${error}")
+                logMessage("debug", "error adding RTS device ${label} ${error}")
+            }
+        }
+        else if (typeName.startsWith("io:") && typeName.endsWith("IOComponent")) {
+            logMessage("debug", "IO Component ${label}")
+            
+            try {
+                addTaHomaComponent(it)
+            }
+            catch (error) {
+                logMessage("debug", "error adding IO device ${label} ${error}")
             }
         }
         else {
@@ -256,10 +266,10 @@ def refreshDevices() {
     }
 }
 
-void addTaHomaRtsBlind(data) {
+void addTaHomaComponent(data) {
     def name = data.label
     
-    def child = addChildDevice("bitlush", "TaHoma Switch - RTS Blind", device.deviceNetworkId + "-" + data.deviceURL, [name: "${name}", label: "${name}", isComponent: true])
+    def child = addChildDevice("bitlush", "TaHoma Component", device.deviceNetworkId + "-" + data.deviceURL, [name: "${name}", label: "${name}", isComponent: true])
     
     child.updateDataValue("deviceUrl", data.deviceURL)
 }
