@@ -8,8 +8,8 @@ import groovy.json.JsonBuilder
 
 @Field String DEFAULT_LOG_LEVEL = LOG_LEVELS[4]
 
-@Field static callLock = new Object()
-@Field static callOccuring = false
+@Field static retryLock = new Object()
+@Field static retryQueue = [:]
 
 metadata {
     definition (name: "TaHoma Switch", namespace: "bitlush", author: "Keith Wood") {
@@ -28,6 +28,8 @@ metadata {
             input name: "tahomaPassword", type: "password", title: "Password", required: true
             input name: "tahomaPin", type: "password", title: "PIN", required: true
             input name: "tahomaHost", type: "text", title: "Host", required: false
+            
+            input name: "tahomaRetryCount", title: "Retry Devices", type: "enum", options: [[0: "Don't retry"], [1: "1"], [2: "2"], [3: "3"]], defaultValue: 0, required: true
             
             input name: "tahomaRegion", title: "Region", type: "enum", options: [[1: "Europe, Middle East and Africa"], [2: "Asia and Pacific"], [4: "North America"]], defaultValue: 1, required: true
             
@@ -73,8 +75,6 @@ def checkState() {
 }
 
 def apiInvoke(path, body) {
-    logMessage("trace", "apiPost to " + tahomaSwitchUri())
-    
     def params = [
         uri: tahomaSwitchUri(),
         path: "/enduser-mobile-web/1/enduserAPI" + path,
@@ -84,8 +84,65 @@ def apiInvoke(path, body) {
         body: body
     ]
     
+    logMessage("trace", "api invoked: ${responseData}");
+    
     return apiInvokeSynchronized(params, path, body)
 }
+
+def apiInvokeForDevice(path, body, deviceURL, retryCount) {
+    def params = [
+        uri: tahomaSwitchUri(),
+        path: "/enduser-mobile-web/1/enduserAPI" + path,
+        ignoreSSLIssues: true,
+        headers: ["Content-Type": "application/json", "Authorization": "Bearer ${state.tokenId}"],
+        timeout: 30,
+        body: body
+    ]
+    
+    def responseData = apiInvokeSynchronized(params, path, body)
+    
+    if (retryCount > 0) {
+        retryLaterForDevice(path, body, deviceURL, retryCount - 1);
+    }
+    
+    logMessage("trace", "api invoked for device ${deviceURL}: ${responseData}");
+}
+
+def retryLaterForDevice(path, body, deviceURL, retryCount) {
+    synchronized (retryLock) {
+        retryQueue[deviceURL] = [path: path, body: body, retryCount: retryCount]
+    }
+    
+    def retryIndex = Integer.parseInt(tahomaRetryCount) - retryCount
+    
+    def retryInterval = 60 * (retryIndex)
+    
+    logMessage("trace", "retry state: ${atomicState}, retry ${retryIndex} of ${tahomaRetryCount}, retry interval ${retryInterval} seconds")
+    
+    runIn(retryInterval, "retry")
+}
+
+def retry(retries) {
+    def queue
+    
+    synchronized (retryLock) {
+        queue = retryQueue
+        
+        retryQueue = [:]
+    }
+    
+    queue.each { entry -> 
+        deviceURL = entry.key
+        path = entry.value["path"]
+        body = entry.value["body"]
+        retryCount = entry.value["retryCount"]
+
+        logMessage("trace", "retrying blinds $deviceURL")
+        
+        apiInvokeForDevice(path, body, deviceURL, retryCount as Integer)
+    }
+}
+
 
 @groovy.transform.Synchronized
 def apiInvokeSynchronized(params, path, body) {
@@ -118,8 +175,6 @@ def apiInvokeSynchronized(params, path, body) {
             }
         }
     }
-    
-    logMessage("trace", "api invoked: ${responseData}");
     
     return responseData
 }
@@ -275,7 +330,7 @@ void addTaHomaComponent(data) {
 }
 
 void rtsBlindCommand(command, deviceUrl) {
-    apiPost("/exec/apply", '{ "label": "", "actions": [ { "commands": [{ "type": "ACTUATOR", "name": "' + command + '", "parameters": [] }], "deviceURL": "' + deviceUrl + '" } ] }')
+    apiInvokeForDevice("/exec/apply", '{ "label": "", "actions": [ { "commands": [{ "type": "ACTUATOR", "name": "' + command + '", "parameters": [] }], "deviceURL": "' + deviceUrl + '" } ] }', deviceUrl, tahomaRetryCount as Integer)
 }
 
 private getExistingToken() {
