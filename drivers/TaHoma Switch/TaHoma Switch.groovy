@@ -29,7 +29,7 @@ metadata {
             input name: "tahomaPin", type: "password", title: "PIN", required: true
             input name: "tahomaHost", type: "text", title: "Host", required: false
             
-            input name: "tahomaRetryCount", title: "Retry Devices", type: "enum", options: [[0: "Don't retry"], [1: "1"], [2: "2"], [3: "3"]], defaultValue: 0, required: true
+            input name: "tahomaRetryCount", title: "Retries", type: "enum", options: [[0: "Don't retry"], [1: "1"], [2: "2"], [3: "3"]], defaultValue: 0, required: true
             
             input name: "tahomaRegion", title: "Region", type: "enum", options: [[1: "Europe, Middle East and Africa"], [2: "Asia and Pacific"], [4: "North America"]], defaultValue: 1, required: true
             
