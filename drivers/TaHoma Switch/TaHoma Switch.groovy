@@ -324,7 +324,7 @@ def refreshDevices() {
 void addTaHomaComponent(data) {
     def name = data.label
     
-    def child = addChildDevice("bitlush", "TaHoma Component", device.deviceNetworkId + "-" + data.deviceURL, [name: "${name}", label: "${name}", isComponent: true])
+    def child = addChildDevice("bitlush", "TaHoma Switch - RTS Blind", device.deviceNetworkId + "-" + data.deviceURL, [name: "${name}", label: "${name}", isComponent: true])
     
     child.updateDataValue("deviceUrl", data.deviceURL)
 }
