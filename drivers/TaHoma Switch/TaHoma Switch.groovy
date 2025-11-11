@@ -19,7 +19,10 @@ metadata {
         command "clearDevices"
         command "register"
         command "refreshDevices"
+        command "testCommands"
         //command "testIntegration"
+  
+        
     }
     
     preferences {
@@ -99,13 +102,45 @@ def apiInvokeForDevice(path, body, deviceURL, retryCount) {
         body: body
     ]
     
-    def responseData = apiInvokeSynchronized(params, path, body)
+    def responseData = apiInvokeSynchronized(params, path, body);
     
     if (retryCount > 0) {
         retryLaterForDevice(path, body, deviceURL, retryCount - 1);
     }
+    else {
+        retryCancelForDevice(path, body, deviceURL);
+    }
     
-    logMessage("trace", "api invoked for device ${deviceURL}: ${responseData}");
+    logMessage("trace", "*********** api invoked for device ${deviceURL}: ${responseData}, body: ${body} retries: ${retryCount}")
+}
+
+def testCommands() {
+    def devices = apiGet("/setup/devices")
+    
+    logMessage("trace", "getCommands: " + devices)
+    
+    child = childDevices[0]
+    
+   //apiInvokeForDevice("/exec/apply", '{ "label": "", "actions": [ { "commands": [{ "type": "ACTUATOR", "name": "' + command + '", "parameters": [] }], "deviceURL": "' + deviceUrl + '" } ] }', deviceUrl, tahomaRetryCount as Integer)
+
+    def params = [
+        uri: tahomaSwitchUri(),
+        path: "/enduser-mobile-web/1/enduserAPI" + "/setup/devices/" + child.getDeviceUrl(),
+        ignoreSSLIssues: true,
+        headers: ["Content-Type": "application/json", "Authorization": "Bearer ${state.tokenId}"],
+        timeout: 30,
+        body: body
+    ]
+    
+    def responseData = apiInvokeSynchronized(params, path, body)
+    
+    logMessage("trace", "getCommands ${deviceURL}: ${responseData}")
+}
+
+def retryCancelForDevice(path, body, deviceURL) {
+    synchronized (retryLock) {
+        retryQueue.remove(deviceURL)
+    }
 }
 
 def retryLaterForDevice(path, body, deviceURL, retryCount) {
@@ -291,7 +326,21 @@ def refreshDevices() {
         
         orphaned.remove(it.deviceURL)
         
-        if (typeName.startsWith("rts:") && typeName.endsWith("RTSComponent")) {
+        if (typeName.startsWith("rts:") && typeName.endsWith("VenetianBlindRTSComponent")) {
+            logMessage("debug", "RTS Venetian Blind ${label}")
+            
+            //logMessage("debug", "TRY TO DELETE " + device.deviceNetworkId + "-" + it.deviceURL)
+            
+            //deleteChildDevice(device.deviceNetworkId + "-" + it.deviceURL)
+            
+            try {
+                addTaHomaComponent(it, "TaHoma Switch - RTS Venetian Blind")
+            }
+            catch (error) {
+                logMessage("debug", "error adding RTS device ${label} ${error}")
+            }
+        }
+        else if (typeName.startsWith("rts:") && typeName.endsWith("RTSComponent")) {
             logMessage("debug", "RTS Component ${label}")
             
             try {
@@ -321,16 +370,20 @@ def refreshDevices() {
     }
 }
 
-void addTaHomaComponent(data) {
+void addTaHomaComponent(data, type = "TaHoma Switch - RTS Blind") {
     def name = data.label
     
-    def child = addChildDevice("bitlush", "TaHoma Switch - RTS Blind", device.deviceNetworkId + "-" + data.deviceURL, [name: "${name}", label: "${name}", isComponent: true])
+    def child = addChildDevice("bitlush", type, device.deviceNetworkId + "-" + data.deviceURL, [name: "${name}", label: "${name}", isComponent: true])
     
     child.updateDataValue("deviceUrl", data.deviceURL)
 }
 
 void rtsBlindCommand(command, deviceUrl) {
     apiInvokeForDevice("/exec/apply", '{ "label": "", "actions": [ { "commands": [{ "type": "ACTUATOR", "name": "' + command + '", "parameters": [] }], "deviceURL": "' + deviceUrl + '" } ] }', deviceUrl, tahomaRetryCount as Integer)
+}
+
+void rtsTiltCommand(tiltCommand, tilt, deviceUrl) {
+    apiInvokeForDevice("/exec/apply", '{ "label": "", "actions": [ { "commands": [{ "type": "ACTUATOR", "name": "' + tiltCommand + '", "parameters": [' + tilt + ', 0] }], "deviceURL": "' + deviceUrl + '" } ] }', deviceUrl, 0)
 }
 
 private getExistingToken() {
