@@ -626,7 +626,7 @@ def parse(event) {
     logMessage("trace", "parse() => event: ${eventName}:${eventValue} | ${event}")
     
     if (eventName == "core:ConnectivityState") {
-        state.tahomaConnectivity = eventValue
+        state.tahomaConnectivityState = eventValue
     }    
 }
 
