@@ -56,7 +56,7 @@ def parse(event) {
     eventValue = event.value[0]
     sendEvent(name: eventName, value: eventValue)
     
-    //logMessage("trace", "Zibbee Bling parse() => event: ${eventName}:${eventValue} | ${event}")
+    logMessage("trace", "Zigbee Bling parse() => event: ${eventName}:${eventValue} | ${event}")
     
     //For battery levels and closureState we need to do a little more
     if (eventName == "core:ClosureState") {
@@ -78,6 +78,7 @@ def parse(event) {
         // 2. Report the standard % Open (Level) - CRITICAL for Google Home
         def percentOpen = 100 - percentClosed
         sendEvent(name: "level", value:percentOpen)
+        sendEvent(name: "position", value:percentClosed)
     }
     else if (eventName == "core:BatteryLevelState") {
         currentTime = new Date()

@@ -246,6 +246,10 @@ def tahomaSwitchUri() {
     }
 }
 
+def tahomaSwitchDeviceURL() {
+    return "internal://${tahomaPin}/pod/0"
+}
+
 def register(force = false) {
     logMessage("debug", "generateToken()")
    
@@ -588,20 +592,26 @@ def refresh() {
             //Get the shorten device URL to catch events from /0, /1 and /232 subdevices
         	shortenDeviceURL = deviceURL.replaceAll("/\\d+\$", "")
             
-            //Just in case we don't know that device
-            try {
-                //Get the device Network ID from the zigbeeDevices map
-            	deviceNetworkID = state.zigBeeDevices[shortenDeviceURL].deviceNetworkId
-                
-                //send the event to the child
-            	getChildDevice(deviceNetworkID).parse(it.deviceStates)
+            // If the event is for the TahomaSwitch itself
+            if (deviceURL == tahomaSwitchDeviceURL()) {
+                parse(it.deviceStates)
             }
-            catch (error) {
-                logMessage("warn", "Received an event from an unknown device: ${deviceURL}=>it.deviceStates")
-            }            
+            else {
+                //Just in case we don't know that device
+                try {
+                    //Get the device Network ID from the zigbeeDevices map
+                    deviceNetworkID = state.zigBeeDevices[shortenDeviceURL].deviceNetworkId
+
+                    //send the event to the child
+                    getChildDevice(deviceNetworkID).parse(it.deviceStates)
+                }
+                catch (error) {
+                    logMessage("warn", "Received an event from an unknown device: ${deviceURL}=>${it.deviceStates}")
+                }
+            }
         }
         // If we have events, things may be happening so let's check again soon
-        checkperiod = 10
+        checkperiod = 2
     }
     
     if (checkperiod > 0){
@@ -609,21 +619,15 @@ def refresh() {
     }
 }
 
-def parse(String description) {
-    logMessage("trace", "parse() - description: ${description.inspect()}")
-
-    def result = []
-
-    def command = zwave.parse(description, getCommandClassVersions())
+def parse(event) {
+    eventName = event.name[0]
+    eventValue = event.value[0]
     
-    if (command) {
-        result = zwaveEvent(command)
-    }
-    else {
-        logMessage("error", "parse() - Non-parsed - description: ${description?.inspect()}")
-    }
+    logMessage("trace", "parse() => event: ${eventName}:${eventValue} | ${event}")
     
-    result
+    if (eventName == "core:ConnectivityState") {
+        state.tahomaConnectivity = eventValue
+    }    
 }
 
 private logMessage(level, message) {
