@@ -71,7 +71,7 @@ def parse(event) {
             sendEvent(name: "switch", value: "off")
         }
         else {
-        	sendEvent(name: "windowShade", value:"partially open")            
+        	sendEvent(name: "windowShade", value:"partially open")
         }
         
         // 2. Report the level and position - position is used by Google Home
