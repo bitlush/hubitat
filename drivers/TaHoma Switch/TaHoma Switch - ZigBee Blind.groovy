@@ -17,7 +17,7 @@ metadata {
         command "resetGoogleState" // Needed if blinds don't appear in Google Home
         
         attribute 'lastBatteryDate', 'date'
-        attribute 'closureState', 'number'
+        attribute 'windowShadeState', 'string'
     }
     
     preferences {
@@ -39,11 +39,11 @@ def resetGoogleState() {
     // B. IMMEDIATE INITIALIZATION
     // Hubitat requires these events to be present for the capabilities to be recognized.
     // We set it to a known state (e.g., closed)
-    sendEvent(name: "level", value: 0) // WindowShade position (0% Open = Closed)
-    sendEvent(name: "position", value: 100) // WindowShade position (position of 100 = Closed)
-    sendEvent(name: "windowShade", value: "closed") // WindowShade state
-    sendEvent(name: "switch", value: "off") // Switch state (Closed = Off)    
-    log.info "Initial attributes set (Level=0, position=100, Shade=Closed, Switch=Off)."
+    sendEvent(name: "level", value: 0) // WindowShade position (0% = Open)
+    sendEvent(name: "position", value: 100) // WindowShade position (position of 100 = Open)
+    sendEvent(name: "windowShade", value: "open") // WindowShade state
+    sendEvent(name: "switch", value: "on") // Switch state (Open = On)    
+    log.info "Initial attributes set (Level=0, position=100, Shade=Open, Switch=On)."
     
     // C. Trigger the platform to see the change
     runIn(2, "refresh")
@@ -58,10 +58,9 @@ def parse(event) {
     
     logMessage("trace", "Zigbee Bling parse() => event: ${eventName}:${eventValue} | ${event}")
     
-    //For battery levels and closureState we need to do a little more
+    //For battery levels, operationalStatusState and closureState we need to do a little more
     if (eventName == "core:ClosureState") {
         def percentClosed = eventValue.toInteger()
-        sendEvent(name: 'closureState', value: percentClosed, unit:'%', descriptionText:"Blind is ${eventValue}% closed")
         
         if (percentClosed == 0) {
             sendEvent(name: "windowShade", value:"open")
@@ -75,10 +74,18 @@ def parse(event) {
         	sendEvent(name: "windowShade", value:"partially open")            
         }
         
-        // 2. Report the standard % Open (Level) - CRITICAL for Google Home
+        // 2. Report the level and position - position is used by Google Home
         def percentOpen = 100 - percentClosed
-        sendEvent(name: "level", value:percentOpen)
-        sendEvent(name: "position", value:percentClosed)
+        sendEvent(name: "level", value:percentClosed)
+        sendEvent(name: "position", value:percentOpen)
+    }
+    else if (eventName == "core:OperationalStatusState") {
+        sendEvent(name: "windowShadeState", value:eventValue)
+        
+        // If the window shade is not moving anymore, we can cancel the state refresh loop
+        if (eventValue == "not moving") {
+            stopStateRefreshLoop()
+        }        
     }
     else if (eventName == "core:BatteryLevelState") {
         currentTime = new Date()
@@ -92,14 +99,38 @@ def getDeviceUrl() {
     return device.getDataValue("deviceUrl")
 }
 
+def startStateRefreshLoop() {
+    atomicState.refreshLoopCounter = 30
+    state.refreshLoopPeriod = 1
+    runIn(state.refreshLoopPeriod, "stateRefreshLoop")
+}
+
+def stopStateRefreshLoop() {
+    unschedule("stateRefreshLoop")
+    atomicState.refreshLoopCounter = 0
+}
+
+def stateRefreshLoop() {
+    refreshLoopCounter = atomicState.refreshLoopCounter
+    if (refreshLoopCounter > 0) {
+        // Decrement counter, perform action and schedule
+        atomicState.refreshLoopCounter = refreshLoopCounter - 1
+        refresh()
+        runIn(state.refreshLoopPeriod, "stateRefreshLoop")
+    } 
+    else {
+        stopStateRefreshLoop()
+    }
+}
+
 def zigbeeBlindCommand(command) {
     parent.zigbeeBlindCommand(command,[], getDeviceUrl())
-    runIn(1, "refresh")
+    startStateRefreshLoop()
 }
 
 def zigbeeBlindCommand(command, parameters) {
     parent.zigbeeBlindCommand(command,parameters, getDeviceUrl())
-    runIn(1, "refresh")
+    startStateRefreshLoop()
 }
 
 def zigbeeGetState(StateName, deviceUrl) {
@@ -114,6 +145,7 @@ def zigbeeGetState(StateName, deviceUrl) {
 }
 
 def refresh() {
+    logMessage("trace", "Zigbee Bling refresh()")
     parent.refresh()
 }
 
@@ -149,10 +181,10 @@ def setPosition(position) {
 
 def startPositionChange(direction) {
     if (direction == "open") {
-        zigbeeBlindCommand("open")
+        open()
     }
     else {
-        zigbeeBlindCommand("close")
+        close()
     }
 }
 

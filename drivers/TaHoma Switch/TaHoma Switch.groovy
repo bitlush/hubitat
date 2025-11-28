@@ -573,49 +573,46 @@ def initialize() {
 }
 
 def refresh() {
-    checkperiod = eventsCheckPeriod.toInteger()
-    
     events = apiPost("/events/" + state.listenerID + "/fetch","")
     
     //If the listener has been disconnected, a null structure will be returned
     if (events == null) {
         logMessage("warn", "Fetching the latest events failed. Will try to re-register the listener. Previous listener registration time: ${state.listenerRegistrationTime}")
         initialize()
-        // Let's try fetching these events again
-        runIn(5, "refresh")
-        return
     }
-    
-    events.each() {
-        deviceURL = it.deviceURL
-        if (deviceURL != null) {
-            //Get the shorten device URL to catch events from /0, /1 and /232 subdevices
-        	shortenDeviceURL = deviceURL.replaceAll("/\\d+\$", "")
-            
-            // If the event is for the TahomaSwitch itself
-            if (deviceURL == tahomaSwitchDeviceURL()) {
-                parse(it.deviceStates)
-            }
-            else {
-                //Just in case we don't know that device
-                try {
-                    //Get the device Network ID from the zigbeeDevices map
-                    deviceNetworkID = state.zigBeeDevices[shortenDeviceURL].deviceNetworkId
+    else {
+        events.each() {
+            deviceURL = it.deviceURL
 
-                    //send the event to the child
-                    getChildDevice(deviceNetworkID).parse(it.deviceStates)
+            if (deviceURL != null) {
+
+                // If the event is for the TahomaSwitch itself
+                if (deviceURL == tahomaSwitchDeviceURL()) {
+                    parse(it.deviceStates)
                 }
-                catch (error) {
-                    logMessage("warn", "Received an event from an unknown device: ${deviceURL}=>${it.deviceStates}")
+                else {
+                    //Get the shorten device URL to catch events from /0, /1 and /232 subdevices
+                    shortenDeviceURL = deviceURL.replaceAll("/\\d+\$", "")
+
+                    //Just in case we don't know that device
+                    try {
+                        //Get the device Network ID from the zigbeeDevices map
+                        deviceNetworkID = state.zigBeeDevices[shortenDeviceURL].deviceNetworkId
+
+                        //send the event to the child
+                        getChildDevice(deviceNetworkID).parse(it.deviceStates)
+                    }
+                    catch (error) {
+                        logMessage("warn", "Received an event from an unknown device: ${deviceURL}=>${it.deviceStates}")
+                    }
                 }
             }
-        }
-        // If we have events, things may be happening so let's check again soon
-        checkperiod = 2
+        }        
     }
     
-    if (checkperiod > 0){
-    	runIn(checkperiod, "refresh")
+    logMessage("trace", "Will run refresh() again in ${eventsCheckPeriod.toInteger()} seconds")
+    if (eventsCheckPeriod.toInteger() > 0){
+    	runIn(eventsCheckPeriod.toInteger(), "refresh")
     }
 }
 
@@ -623,7 +620,7 @@ def parse(event) {
     eventName = event.name[0]
     eventValue = event.value[0]
     
-    logMessage("trace", "parse() => event: ${eventName}:${eventValue} | ${event}")
+    logMessage("debug", "parse() => event: ${eventName}:${eventValue} | ${event}")
     
     if (eventName == "core:ConnectivityState") {
         state.tahomaConnectivityState = eventValue
