@@ -15,7 +15,7 @@ metadata {
     definition (name: "TaHoma Switch", namespace: "bitlush", author: "Keith Wood") {
         capability "Configuration"
         capability "Initialize"
-        
+        capability "Refresh"
         command "clearDevices"
         command "register"
         command "refreshDevices"
@@ -38,6 +38,7 @@ metadata {
             
             input name: "logLevel", title: "Log Level", type: "enum", options: LOG_LEVELS, defaultValue: DEFAULT_LOG_LEVEL, required: false
             input name: "stateCheckIntervalMinutes", title: "State Check Interval", type: "enum", options:[[0:"Disabled"], [30:"30min"], [60:"1h"], [120:"2h"], [180:"3h"], [240:"4h"], [360:"6h"], [480:"8h"], [720: "12h"]], defaultValue: 720, required: true
+			input name: "eventsCheckPeriod", title: "Period at which events are checked", type: "enum", options:[[0:"Disabled"], [60:"1 min"], [120:"2 min"], [180:"3 min"], [240:"4 min"], [300:"5 min"], [600:"10 min"]], defaultValue: 300, required: true
         }
     }
 }
@@ -52,6 +53,8 @@ def clearDevices() {
     logMessage("debug", "ClearState() - Clearing device states")
     
     childDevices?.each{ deleteChildDevice(it.deviceNetworkId) }
+	// Clear the zigbee child map
+    state.zigBeeDevices = [:]
 }
 
 def scheduleTokenCheck() {
@@ -243,6 +246,10 @@ def tahomaSwitchUri() {
     }
 }
 
+def tahomaSwitchDeviceURL() {
+    return "internal://${tahomaPin}/pod/0"
+}
+
 def register(force = false) {
     logMessage("debug", "generateToken()")
    
@@ -360,6 +367,19 @@ def refreshDevices() {
                 logMessage("debug", "error adding IO device ${label} ${error}")
             }
         }
+		else if (typeName.startsWith("zigbee:") && typeName.endsWith("RollerShadeComponent")) {
+            logMessage("debug", "zigbee Component ${label}")
+            
+            try {
+                addTaHomaComponent(it, "TaHoma Switch - Zigbee Blind")
+				//Somfy creates several sub-devices with /1, /232 or /0 at the end. For the sake of simplicity, we map the devices by their shortened IDs. This map will be used to route events to zigbee devices from the listener
+				shortDeviceURL = it.deviceURL.replaceAll("/\\d+\$", "")    
+				state.zigBeeDevices[shortDeviceURL] = ["DeviceURL": it.deviceURL, "deviceNetworkId":device.deviceNetworkId + "-" + it.deviceURL]
+            }
+            catch (error) {
+                logMessage("error", "error adding zigbee device ${label} ${error}")
+            }
+        }
         else {
             logMessage("debug", "unknown device ${typeName}")
         }
@@ -386,6 +406,25 @@ void rtsTiltCommand(tiltCommand, tilt, deviceUrl) {
     apiInvokeForDevice("/exec/apply", '{ "label": "", "actions": [ { "commands": [{ "type": "ACTUATOR", "name": "' + tiltCommand + '", "parameters": [' + tilt + ', 0] }], "deviceURL": "' + deviceUrl + '" } ] }', deviceUrl, 0)
 }
 
+void zigbeeBlindCommand(command, parameters, deviceUrl) {
+    apiInvokeForDevice("/exec/apply", '{ "label": "", "actions": [ { "commands": [{ "type": "ACTUATOR", "name": "' + command + '", "parameters": ' + parameters + ' }], "deviceURL": "' + deviceUrl + '" } ] }', deviceUrl, tahomaRetryCount as Integer)
+}
+
+def zigbeeGet(command) {
+    response = apiInvoke(command, null)
+    logMessage("trace", "zigbeeGet Response: ${response}")
+    
+    return response
+}
+
+def zigbeeGetDeviceAttributes(deviceUrl) {
+    
+    setup = apiGet("/setup")
+    attributes = setup.devices.find{it.deviceURL == deviceUrl}
+    //logMessage("trace", "zigbeeGetDeviceAttributes deviceUrl: ${deviceUrl} | attributes: ${attributes}")
+    
+    return attributes
+}
 private getExistingToken() {
     def tokens = getAvailableTokens()
     
@@ -528,24 +567,64 @@ def installed() {
 }
 
 def initialize() {
-   
+	listenerID = apiPost("/events/register","")
+    state.listenerID = listenerID.id
+    state.listenerRegistrationTime = new Date()
 }
 
-def parse(String description) {
-    logMessage("trace", "parse() - description: ${description.inspect()}")
-
-    def result = []
-
-    def command = zwave.parse(description, getCommandClassVersions())
+def refresh() {
+    events = apiPost("/events/" + state.listenerID + "/fetch","")
     
-    if (command) {
-        result = zwaveEvent(command)
+    //If the listener has been disconnected, a null structure will be returned
+    if (events == null) {
+        logMessage("warn", "Fetching the latest events failed. Will try to re-register the listener. Previous listener registration time: ${state.listenerRegistrationTime}")
+        initialize()
     }
     else {
-        logMessage("error", "parse() - Non-parsed - description: ${description?.inspect()}")
+        events.each() {
+            deviceURL = it.deviceURL
+
+            if (deviceURL != null) {
+
+                // If the event is for the TahomaSwitch itself
+                if (deviceURL == tahomaSwitchDeviceURL()) {
+                    parse(it.deviceStates)
+                }
+                else {
+                    //Get the shorten device URL to catch events from /0, /1 and /232 subdevices
+                    shortenDeviceURL = deviceURL.replaceAll("/\\d+\$", "")
+
+                    //Just in case we don't know that device
+                    try {
+                        //Get the device Network ID from the zigbeeDevices map
+                        deviceNetworkID = state.zigBeeDevices[shortenDeviceURL].deviceNetworkId
+
+                        //send the event to the child
+                        getChildDevice(deviceNetworkID).parse(it.deviceStates)
+                    }
+                    catch (error) {
+                        logMessage("warn", "Received an event from an unknown device: ${deviceURL}=>${it.deviceStates}")
+                    }
+                }
+            }
+        }        
     }
     
-    result
+    logMessage("trace", "Will run refresh() again in ${eventsCheckPeriod.toInteger()} seconds")
+    if (eventsCheckPeriod.toInteger() > 0){
+    	runIn(eventsCheckPeriod.toInteger(), "refresh")
+    }
+}
+
+def parse(event) {
+    eventName = event.name[0]
+    eventValue = event.value[0]
+    
+    logMessage("debug", "parse() => event: ${eventName}:${eventValue} | ${event}")
+    
+    if (eventName == "core:ConnectivityState") {
+        state.tahomaConnectivityState = eventValue
+    }    
 }
 
 private logMessage(level, message) {
